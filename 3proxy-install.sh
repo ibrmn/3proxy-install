@@ -12,26 +12,37 @@ if [[ -e /etc/3proxy/3proxy.cfg ]]; then
 	echo ""
 	read -p "Do you want to remove 3proxy? [y/n]: " -e -i n REMOVE
 	if [[ "$REMOVE" = 'y' ]]; then
-		/etc/init.d/3proxyinit stop
-		rm -rf /etc/3proxy
-		rm /etc/rc0.d/*proxyinit
-		rm /etc/rc1.d/*proxyinit 
-		rm /etc/rc6.d/*proxyinit
-		rm /etc/rc2.d/*proxyinit
-		rm /etc/rc3.d/*proxyinit 
-		rm /etc/rc4.d/*proxyinit
-		rm /etc/rc5.d/*proxyinit
-		rm /etc/init.d/3proxyinit
-		rm -rf /var/log/3proxy
-		rm /usr/bin/3proxy
+		if [[ -e /etc/init.d/3proxyinit ]]; then
+			/etc/init.d/3proxyinit stop
+			rm -rf /etc/3proxy
+			rm /etc/rc0.d/*proxyinit
+			rm /etc/rc1.d/*proxyinit 
+			rm /etc/rc6.d/*proxyinit
+			rm /etc/rc2.d/*proxyinit
+			rm /etc/rc3.d/*proxyinit 
+			rm /etc/rc4.d/*proxyinit
+			rm /etc/rc5.d/*proxyinit
+			rm /etc/init.d/3proxyinit
+			rm -rf /var/log/3proxy
+			rm /usr/bin/3proxy
+			# systemctl reset-failed
 
-		echo "Wait 5 seconds to close 3proxy."
-		sleep 5s
-		deluser proxy3
-		
-		iptables -D INPUT -p tcp -m tcp --dport 1080 -j ACCEPT
-		iptables -D INPUT -p udp -m udp --dport 1080 -j ACCEPT
-		iptables -D INPUT -p tcp -m tcp --dport 3128 -j ACCEPT
+		else
+			systemctl stop 3proxy
+			systemctl disable 3proxy
+			rm /etc/systemd/system/3proxy.service
+			rm -rf /etc/3proxy
+			rm -rf /var/log/3proxy
+			rm /usr/bin/3proxy
+		fi
+
+			echo "Wait 5 seconds to close 3proxy."
+			sleep 5s
+			deluser proxy3
+
+			iptables -D INPUT -p tcp -m tcp --dport 1080 -j ACCEPT
+			iptables -D INPUT -p udp -m udp --dport 1080 -j ACCEPT
+			iptables -D INPUT -p tcp -m tcp --dport 3128 -j ACCEPT
 
 		echo ""
 		echo "3Proxy removed!"
@@ -107,7 +118,26 @@ $PROXY_USER:CL:$PROXY_PASS" >> /etc/3proxy/.proxyauth
 	mkdir /var/log/3proxy
 	chown proxy3:proxy3 /var/log/3proxy
 
-	# Создаём файл-инициализации
+	if pgrep systemd-journal; then
+
+		# systemd service
+		echo '[Unit]
+Description=3proxy Proxy Server
+After=syslog.target network.target
+
+[Service]
+Type=forking
+ExecStart=/usr/bin/3proxy /etc/3proxy/3proxy.cfg
+
+[Install]
+WantedBy=multi-user.target' >> /etc/systemd/system/3proxy.service
+		#Включаем
+		systemctl start 3proxy
+		systemctl enable 3proxy
+
+	else
+
+		# Создаём файл-инициализации
 echo '
 #!/bin/sh
 #
@@ -143,10 +173,15 @@ case "$1" in
 esac
 exit 0' >> /etc/init.d/3proxyinit
 
-	# Делаем файл исполняемым и добавляем в автозагрузку
-	chmod +x /etc/init.d/3proxyinit
-	update-rc.d 3proxyinit defaults
-	/etc/init.d/3proxyinit start
+		# Делаем файл исполняемым и добавляем в автозагрузку
+		chmod +x /etc/init.d/3proxyinit
+		update-rc.d 3proxyinit defaults
+		/etc/init.d/3proxyinit start
+	fi
+
+
+
+
 
 	# Необходимо открыть порты в iptables
 	echo ""
